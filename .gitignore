@@ -2,8 +2,8 @@
 /trading_key.key
 /*.json
 /did.bin
-/check_did.py
-/debug_session.py
+/*/check_did.py
+/*/debug_session.py
 /logs
 /__pycache__
 /*/__pycache__
