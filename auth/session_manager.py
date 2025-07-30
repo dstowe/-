@@ -31,7 +31,7 @@ class SessionManager:
                 json.dump(session_data, f, indent=2)
             
             self.session_data = session_data
-            self.logger.info(f"Session saved to {self.session_file}")
+            self.logger.debug(f"Session saved successfully")
             return True
             
         except Exception as e:
@@ -39,23 +39,34 @@ class SessionManager:
             return False
     
     def load_session(self, wb) -> bool:
-        """Load session data into webull instance"""
+        """Load session data into webull instance with better validation"""
         try:
             if not os.path.exists(self.session_file):
-                self.logger.info("No session file found")
+                self.logger.debug("No session file found")
                 return False
             
             with open(self.session_file, 'r') as f:
                 session_data = json.load(f)
             
             self.session_data = session_data
-            self.logger.debug(f"Loaded session data with keys: {list(session_data.keys())}")
+            self.logger.debug(f"Session file loaded")
             
-            # Check if session is still valid
-            if not self._is_session_valid(session_data):
-                self.logger.info("Session expired or invalid")
-                self.logger.info("Clearing invalid session file")
-                self.clear_session()
+            # Basic validation - check if session has required fields
+            required_fields = ['access_token', 'refresh_token', 'uuid']
+            missing_fields = [field for field in required_fields if not session_data.get(field)]
+            
+            if missing_fields:
+                self.logger.debug(f"Session missing required fields: {missing_fields}")
+                return False
+            
+            # Check token expiration first (before API calls)
+            if self._is_token_expired(session_data):
+                self.logger.debug("Session token has expired")
+                return False
+            
+            # Check session age (48 hours max)
+            if self._is_session_too_old(session_data):
+                self.logger.debug("Session is too old")
                 return False
             
             # Apply session data to webull instance
@@ -67,135 +78,91 @@ class SessionManager:
             wb._trade_token = session_data.get('trade_token', '')
             wb.zone_var = session_data.get('zone_var', 'dc_core_r1')
             
-            self.logger.info("Session loaded successfully")
-            self.logger.debug(f"Set zone_var to: {wb.zone_var}")
-            self.logger.debug(f"Set account_id to: {wb._account_id}")
+            self.logger.debug("Session data applied to webull instance")
             
-            # IMPORTANT: Re-initialize account context to ensure proper API access
-            # This is crucial for account discovery to work correctly
-            try:
-                self.logger.debug("Attempting to re-initialize account context...")
-                account_id = wb.get_account_id()
-                if account_id:
-                    self.logger.info(f"Account context re-initialized: {account_id}")
-                    return True
-                else:
-                    self.logger.warning("Failed to re-initialize account context - session may be expired")
-                    self.logger.info("Clearing invalid session file")
-                    self.clear_session()
-                    return False
-            except KeyError as e:
-                self.logger.warning(f"API response missing expected field {e} - session likely expired")
-                self.logger.info("Clearing invalid session file")
-                self.clear_session()
-                return False
-            except Exception as e:
-                self.logger.warning(f"Failed to re-initialize account context: {e} - session may be invalid")
-                self.logger.info("Clearing invalid session file")
-                self.clear_session()
-                return False
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load session: {e}")
-            return False
-    
-    def _is_session_valid(self, session_data: Dict) -> bool:
-        """Check if session data is still valid"""
-        try:
-            # Check if required fields exist
-            required_fields = ['access_token', 'refresh_token', 'token_expire']
-            for field in required_fields:
-                if not session_data.get(field):
-                    self.logger.debug(f"Missing required field: {field}")
-                    return False
-            
-            # Check token expiration
-            token_expire = session_data.get('token_expire', '')
-            if token_expire:
-                try:
-                    # Parse the expiration time
-                    expire_time = datetime.fromisoformat(token_expire.replace('+0000', '+00:00'))
-                    current_time = datetime.now(expire_time.tzinfo)
-                    
-                    # Add 5 minute buffer
-                    if expire_time <= current_time + timedelta(minutes=5):
-                        self.logger.debug("Token is expired or expires soon")
-                        return False
-                        
-                except ValueError as e:
-                    self.logger.debug(f"Could not parse token expiration: {e}")
-                    return False
-            
-            # Check session age - be more conservative
-            saved_at = session_data.get('saved_at', '')
-            if saved_at:
-                try:
-                    saved_time = datetime.fromisoformat(saved_at)
-                    age = datetime.now() - saved_time
-                    
-                    # Sessions older than 12 hours are considered stale (reduced from 24)
-                    if age > timedelta(hours=12):
-                        self.logger.debug(f"Session is too old: {age.total_seconds()/3600:.1f} hours")
-                        return False
-                        
-                except ValueError as e:
-                    self.logger.debug(f"Could not parse saved time: {e}")
-                    return False
-            
-            # Additional basic validation
-            access_token = session_data.get('access_token', '')
-            if not access_token or len(access_token) < 10:
-                self.logger.debug("Access token appears invalid")
-                return False
-                
+            # For now, trust the session if it passes basic validation
+            # The login_manager will do the actual verification
+            self.logger.debug("Session loaded and appears valid")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error validating session: {e}")
+            self.logger.debug(f"Error loading session: {e}")
             return False
+    
+    def _is_token_expired(self, session_data: Dict) -> bool:
+        """Check if the token has expired based on token_expire field"""
+        try:
+            token_expire = session_data.get('token_expire', '')
+            if not token_expire:
+                return False  # No expiration info, assume valid
+            
+            # Parse token expiration
+            expire_time = datetime.fromisoformat(token_expire.replace('+0000', '+00:00'))
+            current_time = datetime.now(expire_time.tzinfo)
+            
+            # Add 5 minute buffer
+            if expire_time <= current_time + timedelta(minutes=5):
+                self.logger.debug("Token expires soon or has expired")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"Error checking token expiration: {e}")
+            return False  # If we can't check, assume it's valid
+    
+    def _is_session_too_old(self, session_data: Dict) -> bool:
+        """Check if session is too old (48 hours)"""
+        try:
+            saved_at = session_data.get('saved_at', '')
+            if not saved_at:
+                return False  # No timestamp, assume valid
+            
+            saved_time = datetime.fromisoformat(saved_at)
+            age = datetime.now() - saved_time
+            
+            # Sessions older than 48 hours are considered stale
+            if age > timedelta(hours=48):
+                self.logger.debug(f"Session age: {age.total_seconds()/3600:.1f} hours")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"Error checking session age: {e}")
+            return False  # If we can't check, assume it's valid
     
     def clear_session(self) -> bool:
         """Clear stored session data"""
         try:
             if os.path.exists(self.session_file):
                 os.remove(self.session_file)
-                self.logger.info("Session file deleted")
+                self.logger.debug("Session file removed")
             
             self.session_data = {}
             return True
             
         except Exception as e:
-            self.logger.error(f"Error clearing session: {e}")
+            self.logger.debug(f"Error clearing session: {e}")
             return False
     
-    def refresh_session(self, wb) -> bool:
-        """Refresh the session using refresh token - DISABLED DUE TO ERRORS"""
+    def auto_manage_session(self, wb, force_refresh=False) -> bool:
+        """Automatically manage session with simplified logic"""
         try:
-            self.logger.info("Session refresh requested but disabled due to errors")
-            self.logger.info("Will attempt fresh login instead")
+            # Try to load existing session first
+            if not force_refresh:
+                if self.load_session(wb):
+                    self.logger.debug("Session loaded successfully")
+                    return True
+                else:
+                    self.logger.debug("Session validation failed")
             
-            # Instead of refreshing, we'll just return False so the system
-            # falls back to fresh login
+            # No valid session found
             return False
             
-            # ORIGINAL CODE COMMENTED OUT:
-            # self.logger.info("Attempting to refresh session...")
-            # 
-            # # Try to refresh login
-            # result = wb.refresh_login()
-            # 
-            # if 'accessToken' in result and result['accessToken']:
-            #     self.logger.info("✅ Session refreshed successfully")
-            #     
-            #     # Save the refreshed session
-            #     self.save_session(wb)
-            #     return True
-            # else:
-            #     self.logger.warning("❌ Failed to refresh session")
-            #     return False
-                
         except Exception as e:
-            self.logger.error(f"❌ Error in refresh session: {e}")
+            self.logger.debug(f"Error in session management: {e}")
+            self.session_data = {}
             return False
     
     def get_session_info(self) -> Dict:
@@ -230,44 +197,10 @@ class SessionManager:
         
         return info
     
-    def auto_manage_session(self, wb, force_refresh=False) -> bool:
-        """Automatically manage session - load if valid, skip refresh due to errors"""
-        try:
-            # Try to load existing session first
-            if not force_refresh and self.load_session(wb):
-                self.logger.info("Loaded existing valid session")
-                return True
-            
-            # Skip refresh functionality due to errors
-            self.logger.info("Session refresh disabled - will require fresh login")
-            self.logger.info("No valid session found - new login required")
-            return False
-            
-            # ORIGINAL REFRESH CODE COMMENTED OUT:
-            # # If no valid session, try to refresh if we have a refresh token
-            # if self.session_data and self.session_data.get('refresh_token'):
-            #     self.logger.info("Attempting to refresh session...")
-            #     if self.refresh_session(wb):
-            #         self.logger.info("Refreshed expired session")
-            #         return True
-            #     else:
-            #         self.logger.warning("Session refresh failed")
-            # 
-            # # If refresh fails or no refresh token, need new login
-            # self.logger.info("No valid session found - new login required")
-            # return False
-            
-        except Exception as e:
-            self.logger.error(f"Error in auto session management: {e}")
-            # Clear potentially corrupted session data
-            self.session_data = {}
-            return False
-    
     def backup_session(self, backup_suffix=None) -> bool:
         """Create a backup of current session"""
         try:
             if not os.path.exists(self.session_file):
-                self.logger.info("No session file to backup")
                 return False
             
             if backup_suffix is None:
@@ -279,38 +212,9 @@ class SessionManager:
                 with open(backup_file, 'w') as backup:
                     backup.write(source.read())
             
-            self.logger.info(f"Session backed up to {backup_file}")
+            self.logger.debug(f"Session backed up")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error backing up session: {e}")
+            self.logger.debug(f"Error backing up session: {e}")
             return False
-    
-    def cleanup_old_backups(self, max_age_days=7) -> int:
-        """Clean up old session backup files"""
-        try:
-            cleaned = 0
-            cutoff_time = datetime.now() - timedelta(days=max_age_days)
-            
-            # Look for backup files
-            directory = os.path.dirname(self.session_file) or '.'
-            filename_base = os.path.basename(self.session_file)
-            
-            for file in os.listdir(directory):
-                if file.startswith(f"{filename_base}.backup_"):
-                    file_path = os.path.join(directory, file)
-                    file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-                    
-                    if file_time < cutoff_time:
-                        os.remove(file_path)
-                        cleaned += 1
-                        self.logger.debug(f"Cleaned up old backup: {file}")
-            
-            if cleaned > 0:
-                self.logger.info(f"Cleaned up {cleaned} old session backups")
-            
-            return cleaned
-            
-        except Exception as e:
-            self.logger.error(f"Error cleaning up backups: {e}")
-            return 0

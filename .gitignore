@@ -1,7 +1,9 @@
 /trading_credentials.enc
 /trading_key.key
-/webull_session.json
+/*.json
 /did.bin
+/check_did.py
+/debug_session.py
 /logs
 /__pycache__
 /*/__pycache__
