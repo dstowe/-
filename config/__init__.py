@@ -1,6 +1,5 @@
-# Authentication module for trading system
+# Configuration module for trading system
 
-from .config import PersonalConfig
+from .config import PersonalTradingConfig
 
-
-__all__ = ['PersonalConfig']
+__all__ = ['PersonalTradingConfig']

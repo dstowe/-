@@ -183,24 +183,52 @@ class CredentialManager:
             return {'exists': False, 'error': str(e)}
 
 def setup_credentials_interactive():
-    """Interactive setup for credentials (can be called from main script)"""
+    """Interactive setup for credentials with improved DID handling"""
     print("🔐 ENHANCED MULTI-ACCOUNT TRADING CREDENTIALS SETUP")
     print("="*60)
     print("This is a ONE-TIME setup to securely store your trading credentials.")
     print("After this, the enhanced system will run automatically without prompts.")
-    print("The system will automatically discover and trade across enabled accounts")
-    print("using all PersonalTradingConfig settings and rules.")
     print()
     
     username = input("Enter your Webull username/email: ")
     password = input("Enter your Webull password: ")
     trading_pin = input("Enter your 6-digit Webull trading PIN: ")
     
-    # Optional: Set custom DID
-    use_custom_did = input("Do you have a custom DID to use? (y/n): ").lower().strip()
+    # Improved DID explanation and capture
+    print()
+    print("🖼️  BROWSER DID SETUP (Prevents Image Verification Errors)")
+    print("=" * 60)
+    print("A Browser DID prevents image verification errors during login.")
+    print("This is HIGHLY RECOMMENDED for automated trading.")
+    print()
+    print("To get your Browser DID:")
+    print("1. Open https://www.webull.com/ in your browser")
+    print("2. Log in normally (complete any image verification)")
+    print("3. Press F12 (Developer Tools)")
+    print("4. Go to 'Network' tab")
+    print("5. Refresh the page (F5)")
+    print("6. Click any request → 'Headers' → find 'did' field")
+    print("7. Copy the 32-character hex string")
+    print()
+    
+    use_browser_did = input("Do you want to add a Browser DID now? (highly recommended) (y/n): ").lower().strip()
     did = None
-    if use_custom_did in ['y', 'yes']:
-        did = input("Enter your DID: ")
+    
+    if use_browser_did in ['y', 'yes']:
+        did = input("Enter your Browser DID (32 characters): ").strip()
+        if did:
+            if len(did) == 32:
+                print("✅ Browser DID looks good!")
+            else:
+                print(f"⚠️  Warning: Expected 32 characters, got {len(did)}")
+                confirm = input("Continue anyway? (y/n): ").lower().strip()
+                if confirm not in ['y', 'yes']:
+                    did = None
+    
+    if not did:
+        print("⚠️  No Browser DID provided.")
+        print("   You may get image verification errors.")
+        print("   If this happens, run: python add_did.py")
     
     # Create credential manager and encrypt credentials
     cred_manager = CredentialManager()
@@ -209,13 +237,19 @@ def setup_credentials_interactive():
     if success:
         print()
         print("✅ Setup complete! Your credentials are now encrypted and stored.")
-        print("🚀 You can now run the enhanced automated system or set up Windows Task Scheduler.")
+        if did:
+            print("✅ Browser DID included - should prevent image verification errors")
+        else:
+            print("⚠️  No Browser DID - you may need to add one later if you get errors")
+        
         print()
-        print("📋 Next steps:")
-        print("1. Configure which accounts to enable in personal_config.py ACCOUNT_CONFIGURATIONS")
-        print("2. Review and adjust PersonalTradingConfig settings as needed")
-        print("3. Set up Windows Task Scheduler to run this script daily")
-        print("4. The enhanced system will automatically trade using all your preferences")
+        print("🚀 You can now run the automated trading system:")
+        print("   python main.py")
+        print()
+        if not did:
+            print("💡 If you get image verification errors:")
+            print("   python add_did.py")
+        
         return True
     else:
         print("❌ Failed to setup credentials. Please try again.")
