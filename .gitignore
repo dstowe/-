@@ -9,7 +9,7 @@
 /webull_session.json
 
 # Debug and development files
-/tests/*
+/tests/
 
 # Logs
 /logs
