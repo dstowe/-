@@ -22,7 +22,7 @@ class PersonalTradingConfig:
     # =================================================================
 
     # Database
-    DATABASE_PATH = "trading_data.db"
+    DATABASE_PATH = "data/trading_data.db"
     
     # Account configurations
     ACCOUNT_CONFIGURATIONS = {
