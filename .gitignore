@@ -1,9 +1,24 @@
+# Data folder - contains all sensitive credential and session files
+/data/
+
+# Legacy files (in case they still exist in root)
 /trading_credentials.enc
 /trading_key.key
 /*.json
 /did.bin
-#/*/check_did.py
-/*/debug_session.py
+/webull_session.json
+
+# Debug and development files
+/tests/check_did.py
+/tests/debug_session.py
+
+# Logs
 /logs
+
+# Python cache
 /__pycache__
 /*/__pycache__
+
+# Backup files
+*.backup_*
+*.bak

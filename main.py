@@ -85,7 +85,11 @@ class MainSystem:
             
             # Initialize all components
             self.config = PersonalTradingConfig()
+            
+            # Initialize webull with data folder support
             self.wb = webull()
+            # Webull now automatically uses data folder for DID storage
+            
             self.credential_manager = CredentialManager(logger=self.logger)
             self.login_manager = LoginManager(self.wb, self.credential_manager, logger=self.logger)
             self.session_manager = SessionManager(logger=self.logger)
@@ -99,7 +103,7 @@ class MainSystem:
             else:
                 print(f"❌ CRITICAL: Failed to initialize system: {e}")
             raise
-    
+        
     def authenticate(self) -> bool:
         """Handle authentication using the modular authentication system"""
         try:
@@ -116,17 +120,14 @@ class MainSystem:
             stored_did = credentials.get('did')
             
             if stored_did:
-                self.wb._set_did(stored_did)
-                # Save to did.bin for consistency
-                try:
-                    import pickle
-                    with open('did.bin', 'wb') as f:
-                        pickle.dump(stored_did, f)
-                except:
-                    pass  # Non-critical
+                # Set DID using the webull instance's method (now uses data folder)
+                self.wb._set_did(stored_did, data_folder='data')
+                # Also update the webull instance's _did attribute
+                self.wb._did = stored_did
+                self.logger.info("✅ DID set from stored credentials")
             else:
                 self.logger.warning("⚠️ No DID stored - may cause image verification errors")
-                self.logger.info("💡 If authentication fails, run: python add_did.py")
+                self.logger.info("💡 If authentication fails, run: python tests/check_did.py")
             
             # Try existing session first
             self.logger.debug("Attempting to load existing session...")
@@ -157,12 +158,13 @@ class MainSystem:
             else:
                 self.logger.error("❌ Authentication failed")
                 if not stored_did:
-                    self.logger.error("💡 Add browser DID: python add_did.py")
+                    self.logger.error("💡 Add browser DID: python tests/check_did.py")
                 return False
                 
         except Exception as e:
             self.logger.error(f"❌ Authentication error: {e}")
             return False
+
     
     def discover_accounts(self) -> bool:
         """Discover and load all available trading accounts"""

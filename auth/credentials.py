@@ -4,13 +4,19 @@ import json
 import logging
 from datetime import datetime
 from cryptography.fernet import Fernet
+from pathlib import Path
 
 class CredentialManager:
-    """Handles encrypted credential storage and retrieval"""
+    """Handles encrypted credential storage and retrieval in data folder"""
     
-    def __init__(self, credentials_file="trading_credentials.enc", key_file="trading_key.key", logger=None):
-        self.credentials_file = credentials_file
-        self.key_file = key_file
+    def __init__(self, data_folder="data", credentials_file="trading_credentials.enc", key_file="trading_key.key", logger=None):
+        # Create data folder if it doesn't exist
+        self.data_folder = Path(data_folder)
+        self.data_folder.mkdir(exist_ok=True)
+        
+        # Set file paths in data folder
+        self.credentials_file = self.data_folder / credentials_file
+        self.key_file = self.data_folder / key_file
         self.logger = logger or logging.getLogger(__name__)
     
     def generate_key(self):
@@ -33,7 +39,7 @@ class CredentialManager:
         """Encrypt and store trading credentials"""
         try:
             # Generate or load key
-            if not os.path.exists(self.key_file):
+            if not self.key_file.exists():
                 key = self.generate_key()
                 self.logger.info("Generated new encryption key")
             else:
@@ -61,7 +67,7 @@ class CredentialManager:
             with open(self.credentials_file, 'wb') as file:
                 file.write(encrypted_credentials)
             
-            self.logger.info("Credentials encrypted and saved successfully")
+            self.logger.info(f"Credentials encrypted and saved to {self.credentials_file}")
             return True
             
         except Exception as e:
@@ -72,10 +78,10 @@ class CredentialManager:
         """Load and decrypt trading credentials"""
         try:
             # Check if files exist
-            if not os.path.exists(self.credentials_file):
+            if not self.credentials_file.exists():
                 raise FileNotFoundError(f"Credentials file {self.credentials_file} not found")
             
-            if not os.path.exists(self.key_file):
+            if not self.key_file.exists():
                 raise FileNotFoundError(f"Key file {self.key_file} not found")
             
             # Load key and decrypt
@@ -101,17 +107,17 @@ class CredentialManager:
     
     def credentials_exist(self) -> bool:
         """Check if encrypted credentials exist"""
-        return os.path.exists(self.credentials_file) and os.path.exists(self.key_file)
+        return self.credentials_file.exists() and self.key_file.exists()
     
     def delete_credentials(self) -> bool:
         """Delete stored credentials (for security)"""
         try:
-            if os.path.exists(self.credentials_file):
-                os.remove(self.credentials_file)
+            if self.credentials_file.exists():
+                self.credentials_file.unlink()
                 self.logger.info("Credentials file deleted")
             
-            if os.path.exists(self.key_file):
-                os.remove(self.key_file)
+            if self.key_file.exists():
+                self.key_file.unlink()
                 self.logger.info("Key file deleted")
             
             return True
@@ -175,7 +181,8 @@ class CredentialManager:
                 'username': credentials.get('username', 'Unknown'),
                 'created_date': credentials.get('created_date', 'Unknown'),
                 'updated_date': credentials.get('updated_date'),
-                'has_did': bool(credentials.get('did'))
+                'has_did': bool(credentials.get('did')),
+                'storage_location': str(self.credentials_file)
             }
             
         except Exception as e:
@@ -188,6 +195,7 @@ def setup_credentials_interactive():
     print("="*60)
     print("This is a ONE-TIME setup to securely store your trading credentials.")
     print("After this, the enhanced system will run automatically without prompts.")
+    print("📁 Files will be stored in the 'data' folder for better organization.")
     print()
     
     username = input("Enter your Webull username/email: ")
@@ -228,7 +236,7 @@ def setup_credentials_interactive():
     if not did:
         print("⚠️  No Browser DID provided.")
         print("   You may get image verification errors.")
-        print("   If this happens, run: python add_did.py")
+        print("   If this happens, run: python tests/check_did.py")
     
     # Create credential manager and encrypt credentials
     cred_manager = CredentialManager()
@@ -237,6 +245,7 @@ def setup_credentials_interactive():
     if success:
         print()
         print("✅ Setup complete! Your credentials are now encrypted and stored.")
+        print(f"📁 Location: {cred_manager.credentials_file}")
         if did:
             print("✅ Browser DID included - should prevent image verification errors")
         else:
@@ -248,7 +257,7 @@ def setup_credentials_interactive():
         print()
         if not did:
             print("💡 If you get image verification errors:")
-            print("   python add_did.py")
+            print("   python tests/check_did.py")
         
         return True
     else:
@@ -263,4 +272,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n❌ Cancelled by user")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")    
+        print(f"\n❌ Unexpected error: {e}")

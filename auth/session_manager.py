@@ -4,12 +4,18 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional
+from pathlib import Path
 
 class SessionManager:
-    """Manages trading session persistence and token management"""
+    """Manages trading session persistence and token management in data folder"""
     
-    def __init__(self, session_file="webull_session.json", logger=None):
-        self.session_file = session_file
+    def __init__(self, data_folder="data", session_file="webull_session.json", logger=None):
+        # Create data folder if it doesn't exist
+        self.data_folder = Path(data_folder)
+        self.data_folder.mkdir(exist_ok=True)
+        
+        # Set session file path in data folder
+        self.session_file = self.data_folder / session_file
         self.logger = logger or logging.getLogger(__name__)
         self.session_data = {}
     
@@ -31,7 +37,7 @@ class SessionManager:
                 json.dump(session_data, f, indent=2)
             
             self.session_data = session_data
-            self.logger.debug(f"Session saved successfully")
+            self.logger.debug(f"Session saved to {self.session_file}")
             return True
             
         except Exception as e:
@@ -41,7 +47,7 @@ class SessionManager:
     def load_session(self, wb) -> bool:
         """Load session data into webull instance with better validation"""
         try:
-            if not os.path.exists(self.session_file):
+            if not self.session_file.exists():
                 self.logger.debug("No session file found")
                 return False
             
@@ -49,7 +55,7 @@ class SessionManager:
                 session_data = json.load(f)
             
             self.session_data = session_data
-            self.logger.debug(f"Session file loaded")
+            self.logger.debug(f"Session file loaded from {self.session_file}")
             
             # Basic validation - check if session has required fields
             required_fields = ['access_token', 'refresh_token', 'uuid']
@@ -135,8 +141,8 @@ class SessionManager:
     def clear_session(self) -> bool:
         """Clear stored session data"""
         try:
-            if os.path.exists(self.session_file):
-                os.remove(self.session_file)
+            if self.session_file.exists():
+                self.session_file.unlink()
                 self.logger.debug("Session file removed")
             
             self.session_data = {}
@@ -177,7 +183,8 @@ class SessionManager:
             'trade_token_exists': bool(self.session_data.get('trade_token')),
             'account_id': self.session_data.get('account_id'),
             'saved_at': self.session_data.get('saved_at'),
-            'token_expire': self.session_data.get('token_expire')
+            'token_expire': self.session_data.get('token_expire'),
+            'storage_location': str(self.session_file)
         }
         
         # Calculate time until expiration
@@ -200,19 +207,19 @@ class SessionManager:
     def backup_session(self, backup_suffix=None) -> bool:
         """Create a backup of current session"""
         try:
-            if not os.path.exists(self.session_file):
+            if not self.session_file.exists():
                 return False
             
             if backup_suffix is None:
                 backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            backup_file = f"{self.session_file}.backup_{backup_suffix}"
+            backup_file = self.session_file.with_suffix(f'.backup_{backup_suffix}.json')
             
             with open(self.session_file, 'r') as source:
                 with open(backup_file, 'w') as backup:
                     backup.write(source.read())
             
-            self.logger.debug(f"Session backed up")
+            self.logger.debug(f"Session backed up to {backup_file}")
             return True
             
         except Exception as e:

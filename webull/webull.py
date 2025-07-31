@@ -18,7 +18,7 @@ from pytz import timezone
 from . import endpoints
 
 class webull :
-
+    # MODIFIED
     def __init__(self, region_code=None) :
         self._session = requests.session()
         self._headers = {
@@ -39,7 +39,7 @@ class webull :
             'locale': 'eng',
             # 'reqid': req_id,
             'device-type': 'Web',
-            'did': self._get_did()
+            'did': self._get_did('data')  # Updated to use data folder
         }
 
         #endpoints
@@ -54,12 +54,13 @@ class webull :
         self._uuid = ''
 
         #miscellaenous
-        self._did = self._get_did()
+        self._did = self._get_did('data')  # Updated to use data folder
         self._region_code = region_code or 6
         self.zone_var = 'dc_core_r1'
         self.timeout = 15
 
-    def _get_did(self, path=''):
+    # MODIFIED
+    def _get_did(self, data_folder='data'):
         '''
         Makes a unique device id from a random uuid (uuid.uuid4).
         if the pickle file doesn't exist, this func will generate a random 32 character hex string
@@ -67,21 +68,32 @@ class webull :
         load the pickle file to reuse the did. Having a unique did appears to be very important
         for the MQTT web socket protocol
 
-        path: path to did.bin. For example _get_did('cache') will search for cache/did.bin instead.
+        data_folder: folder to store did.bin file (default: 'data')
 
         :return: hex string of a 32 digit uuid
         '''
-        filename = 'did.bin'
-        if path:
-            filename = os.path.join(path, filename)
-        if os.path.exists(filename):
-            did = pickle.load(open(filename,'rb'))
+        from pathlib import Path
+        
+        # Create data folder if it doesn't exist
+        data_path = Path(data_folder)
+        data_path.mkdir(exist_ok=True)
+        
+        filename = data_path / 'did.bin'
+        
+        if filename.exists():
+            try:
+                did = pickle.load(open(filename, 'rb'))
+            except Exception:
+                # If file is corrupted, generate new DID
+                did = uuid.uuid4().hex
+                pickle.dump(did, open(filename, 'wb'))
         else:
             did = uuid.uuid4().hex
             pickle.dump(did, open(filename, 'wb'))
         return did
 
-    def _set_did(self, did, path=''):
+
+    def _set_did(self, did, data_folder='data'):
         '''
         If your starting to use this package after webull's new image verification for login, you'll
         need to login from a browser to get your did file in order to login through this api. You can
@@ -95,11 +107,15 @@ class webull :
         Then, you can run this program to save your did into did.bin so that it can be accessed in the
         future without the did explicitly being in your code.
 
-        path: path to did.bin. For example _get_did('cache') will search for cache/did.bin instead.
+        data_folder: folder to store did.bin file (default: 'data')
         '''
-        filename = 'did.bin'
-        if path:
-            filename = os.path.join(path, filename)
+        from pathlib import Path
+        
+        # Create data folder if it doesn't exist
+        data_path = Path(data_folder)
+        data_path.mkdir(exist_ok=True)
+        
+        filename = data_path / 'did.bin'
         pickle.dump(did, open(filename, 'wb'))
         return True
 
