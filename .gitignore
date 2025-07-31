@@ -9,9 +9,7 @@
 /webull_session.json
 
 # Debug and development files
-/tests/check_did.py
-/tests/debug_session.py
-/tests/webull_endpoints.py
+/tests/*
 
 # Logs
 /logs
